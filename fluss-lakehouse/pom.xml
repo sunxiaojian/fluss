@@ -30,6 +30,7 @@
     <modules>
         <module>fluss-lakehouse-paimon</module>
         <module>fluss-lakehouse-cli</module>
+        <module>fluss-lakehouse-base</module>
     </modules>
     <packaging>pom</packaging>
 

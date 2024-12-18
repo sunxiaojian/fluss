@@ -25,7 +25,7 @@ import com.alibaba.fluss.client.table.snapshot.KvSnapshotInfo;
 import com.alibaba.fluss.client.table.snapshot.PartitionSnapshotInfo;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.lakehouse.paimon.source.Filter;
-import com.alibaba.fluss.lakehouse.paimon.source.NewTablesAddedListener;
+import com.alibaba.fluss.lakehouse.paimon.base.NewTablesAddedListener;
 import com.alibaba.fluss.lakehouse.paimon.source.event.PartitionsRemovedEvent;
 import com.alibaba.fluss.lakehouse.paimon.source.event.TableBucketsUnsubscribedEvent;
 import com.alibaba.fluss.lakehouse.paimon.source.event.TablesRemovedEvent;

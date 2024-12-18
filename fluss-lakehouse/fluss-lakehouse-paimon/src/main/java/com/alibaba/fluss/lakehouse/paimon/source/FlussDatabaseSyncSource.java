@@ -17,6 +17,7 @@
 package com.alibaba.fluss.lakehouse.paimon.source;
 
 import com.alibaba.fluss.config.Configuration;
+import com.alibaba.fluss.lakehouse.paimon.base.NewTablesAddedListener;
 import com.alibaba.fluss.lakehouse.paimon.record.MultiplexCdcRecord;
 import com.alibaba.fluss.lakehouse.paimon.source.enumerator.FlinkSourceEnumerator;
 import com.alibaba.fluss.lakehouse.paimon.source.metrics.FlinkSourceReaderMetrics;

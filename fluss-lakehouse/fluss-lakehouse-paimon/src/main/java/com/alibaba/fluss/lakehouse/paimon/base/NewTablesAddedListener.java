@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.alibaba.fluss.lakehouse.paimon.source;
+package com.alibaba.fluss.lakehouse.paimon.base;
 
 import com.alibaba.fluss.metadata.TableInfo;
 
