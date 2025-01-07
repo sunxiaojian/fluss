@@ -32,25 +32,24 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.sink.DiscardingSink;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.paimon.catalog.Catalog;
-import org.apache.paimon.flink.FlinkConnectorOptions;
-import org.apache.paimon.flink.VersionedSerializerWrapper;
 import org.apache.paimon.flink.sink.CommittableStateManager;
 import org.apache.paimon.flink.sink.Committer;
 import org.apache.paimon.flink.sink.CommitterOperator;
 import org.apache.paimon.flink.sink.FlinkSink;
 import org.apache.paimon.flink.sink.FlinkStreamPartitioner;
 import org.apache.paimon.flink.sink.MultiTableCommittable;
+import org.apache.paimon.flink.sink.MultiTableCommittableChannelComputer;
 import org.apache.paimon.flink.sink.RestoreAndFailCommittableStateManager;
 import org.apache.paimon.flink.sink.StoreSinkWrite;
 import org.apache.paimon.flink.sink.StoreSinkWriteImpl;
 import org.apache.paimon.flink.sink.WrappedManifestCommittableSerializer;
-import org.apache.paimon.flink.sink.cdc.MultiTableCommittableChannelComputer;
 import org.apache.paimon.options.MemorySize;
 import org.apache.paimon.options.Options;
 
 import javax.annotation.Nullable;
 
 import java.io.Serializable;
+import java.util.Map;
 import java.util.UUID;
 
 /* This file is based on source code of Apache Paimon Project (https://paimon.apache.org/), licensed by the Apache
@@ -70,9 +69,11 @@ public class PaimonMultiTableSink implements Serializable {
     private final double commitCpuCores;
     @Nullable private final MemorySize commitHeapMemory;
     private final Configuration flussClientConf;
+    private final Map<String, String> tableConfig;
 
     public PaimonMultiTableSink(
             Catalog.Loader catalogLoader,
+            Map<String, String> tableConfig,
             Configuration flussClientConf,
             double commitCpuCores,
             @Nullable MemorySize commitHeapMemory) {
@@ -80,6 +81,7 @@ public class PaimonMultiTableSink implements Serializable {
         this.flussClientConf = flussClientConf;
         this.commitCpuCores = commitCpuCores;
         this.commitHeapMemory = commitHeapMemory;
+        this.tableConfig = tableConfig;
     }
 
     private StoreSinkWrite.WithWriteBufferProvider createWriteProvider() {
@@ -91,8 +93,7 @@ public class PaimonMultiTableSink implements Serializable {
                         state,
                         ioManager,
                         false,
-                        FlinkConnectorOptions.prepareCommitWaitCompaction(
-                                table.coreOptions().toConfiguration()),
+                        table.coreOptions().prepareCommitWaitCompaction(),
                         true,
                         memoryPoolFactory,
                         metricGroup);
@@ -144,6 +145,7 @@ public class PaimonMultiTableSink implements Serializable {
                                 new CommitterOperator<>(
                                         true,
                                         false,
+                                        true,
                                         commitUser,
                                         createCommitterFactory(),
                                         createCommittableStateManager()))
@@ -154,8 +156,9 @@ public class PaimonMultiTableSink implements Serializable {
 
     protected OneInputStreamOperator<MultiplexCdcRecord, MultiTableCommittable> createWriteOperator(
             StoreSinkWrite.WithWriteBufferProvider writeProvider, String commitUser) {
+
         return new PaimonMultiWriterOperator(
-                catalogLoader, writeProvider, commitUser, new Options());
+                catalogLoader, writeProvider, commitUser, Options.fromMap(tableConfig));
     }
 
     // Table committers are dynamically created at runtime
@@ -165,20 +168,19 @@ public class PaimonMultiTableSink implements Serializable {
         // commit new files list even if they're empty.
         // Otherwise we can't tell if the commit is successful after
         // a restart.
-        return (user, metricGroup) ->
+        return context ->
                 new PaimonStoreMultiCommitter(
                         catalogLoader,
-                        user,
-                        metricGroup,
-                        new FlussLakeTableSnapshotCommitter(flussClientConf, metricGroup));
+                        context,
+                        new FlussLakeTableSnapshotCommitter(flussClientConf, context),
+                        tableConfig);
     }
 
     protected CommittableStateManager<PaimonWrapperManifestCommittable>
             createCommittableStateManager() {
         return new RestoreAndFailCommittableStateManager<>(
                 () ->
-                        new VersionedSerializerWrapper<>(
-                                new PaimonWrappedManifestCommittableSerializer(
-                                        new WrappedManifestCommittableSerializer())));
+                        new PaimonWrappedManifestCommittableSerializer(
+                                new WrappedManifestCommittableSerializer()));
     }
 }

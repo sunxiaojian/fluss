@@ -24,10 +24,12 @@ import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.utils.concurrent.ExecutorThreadFactory;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.table.data.RowData;
+import org.apache.paimon.CoreOptions;
 import org.apache.paimon.catalog.Catalog;
 import org.apache.paimon.catalog.Identifier;
 import org.apache.paimon.data.InternalRow;
@@ -91,6 +93,7 @@ public class PaimonMultiWriterOperator
     private Map<Long, Map<TableBucket, Long>> currentLogEndOffsets;
 
     private ExecutorService compactExecutor;
+    private String commitBranch;
 
     public PaimonMultiWriterOperator(
             Catalog.Loader catalogLoader,
@@ -101,6 +104,7 @@ public class PaimonMultiWriterOperator
         this.catalogLoader = catalogLoader;
         this.storeSinkWriteProvider = storeSinkWriteProvider;
         this.initialCommitUser = initialCommitUser;
+        this.commitBranch = options.get(CoreOptions.BRANCH);
     }
 
     @Override
@@ -172,7 +176,7 @@ public class PaimonMultiWriterOperator
         updateCurrentLogOffset(multiplexCdcRecord);
         try {
             InternalRow paimonRow = toPaimonRow(cdcRecord);
-            if (table.bucketMode() == BucketMode.UNAWARE) {
+            if (table.bucketMode() == BucketMode.BUCKET_UNAWARE) {
                 // unaware bucket mode
                 write.write(paimonRow);
             } else {
@@ -303,6 +307,10 @@ public class PaimonMultiWriterOperator
         if (table == null) {
             Identifier paimonIdentifier = toIdentifier(tablePath);
             table = (FileStoreTable) catalog.getTable(paimonIdentifier);
+            // Switch to branch.
+            if (StringUtils.isNotEmpty(commitBranch)) {
+                table = table.switchToBranch(commitBranch);
+            }
             tables.put(tableId, table);
             tablePathById.put(tableId, paimonIdentifier);
         }

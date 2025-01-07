@@ -36,16 +36,23 @@ import static com.alibaba.fluss.utils.Preconditions.checkNotNull;
 public class PaimonDataBaseSyncSinkBuilder {
 
     private final Options catalogOptions;
+
     private final Configuration flussClientConfig;
 
     private DataStream<MultiplexCdcRecord> input = null;
     private double committerCpu = 1;
     @Nullable private MemorySize committerMemory;
+    private Map<String, String> tableConfig;
 
     public PaimonDataBaseSyncSinkBuilder(
             Map<String, String> catalogConfig, Configuration flussClientConfig) {
         this.catalogOptions = Options.fromMap(catalogConfig);
         this.flussClientConfig = flussClientConfig;
+    }
+
+    public PaimonDataBaseSyncSinkBuilder withTableConfig(Map<String, String> tableConfig) {
+        this.tableConfig = tableConfig;
+        return this;
     }
 
     public PaimonDataBaseSyncSinkBuilder withInput(DataStream<MultiplexCdcRecord> input) {
@@ -88,7 +95,11 @@ public class PaimonDataBaseSyncSinkBuilder {
 
         PaimonMultiTableSink paimonMultiTableSink =
                 new PaimonMultiTableSink(
-                        catalogLoader(), flussClientConfig, committerCpu, committerMemory);
+                        catalogLoader(),
+                        tableConfig,
+                        flussClientConfig,
+                        committerCpu,
+                        committerMemory);
 
         paimonMultiTableSink.sinkFrom(partitioned);
     }

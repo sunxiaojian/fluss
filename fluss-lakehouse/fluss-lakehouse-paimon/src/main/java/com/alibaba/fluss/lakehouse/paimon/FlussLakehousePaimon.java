@@ -42,6 +42,8 @@ public class FlussLakehousePaimon {
     private static final String FLUSS_CONF_PREFIX = "fluss.";
     // for paimon config
     private static final String PAIMON_CATALOG_CONF_PREFIX = "paimon.catalog.";
+    // for paimon table config
+    private static final String PAIMON_TABLE_CONF_PREFIX = "paimon.table.";
 
     public static void main(String[] args) throws Exception {
         // parse params
@@ -60,9 +62,13 @@ public class FlussLakehousePaimon {
         }
         flussConfigMap.put(ConfigOptions.BOOTSTRAP_SERVERS.key(), bootstrapServers);
 
-        // extract paimon config
-        Map<String, String> paimonConfig =
+        // extract paimon catalog config
+        Map<String, String> paimonCatalogConfig =
                 extractConfigStartWith(paramsMap, PAIMON_CATALOG_CONF_PREFIX);
+
+        // extract paimon table config
+        Map<String, String> paimonTableConfig =
+                extractConfigStartWith(paramsMap, PAIMON_TABLE_CONF_PREFIX);
 
         // then build the fluss to paimon job
         final StreamExecutionEnvironment execEnv =
@@ -78,7 +84,7 @@ public class FlussLakehousePaimon {
                         .withTableFilter(tableFilter)
                         .withNewTableAddedListener(
                                 new NewTablesAddedPaimonListener(
-                                        Configuration.fromMap(paimonConfig)));
+                                        Configuration.fromMap(paimonCatalogConfig)));
         if (database != null) {
             Filter<String> databaseFilter = new DatabaseFilter(database);
             databaseSyncSourceBuilder.withDatabaseFilter(databaseFilter);
@@ -91,7 +97,9 @@ public class FlussLakehousePaimon {
                         "FlussSource");
 
         PaimonDataBaseSyncSinkBuilder paimonDataBaseSyncSinkBuilder =
-                new PaimonDataBaseSyncSinkBuilder(paimonConfig, flussConfig).withInput(input);
+                new PaimonDataBaseSyncSinkBuilder(paimonCatalogConfig, flussConfig)
+                        .withTableConfig(paimonTableConfig)
+                        .withInput(input);
         paimonDataBaseSyncSinkBuilder.build();
 
         System.out.println("Starting data tiering service to Paimon.....");
