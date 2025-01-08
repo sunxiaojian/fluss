@@ -41,7 +41,20 @@
             <groupId>com.alibaba.fluss</groupId>
             <artifactId>fluss-fs-hadoop-shaded</artifactId>
             <version>${project.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.hadoop</groupId>
+                    <artifactId>hadoop-common</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
+
+        <dependency>
+            <groupId>org.apache.hadoop</groupId>
+            <artifactId>hadoop-common</artifactId>
+            <version>${fs.hadoopshaded.version}</version><!--$NO-MVN-MAN-VER$-->
+        </dependency>
+
 
         <dependency>
             <groupId>org.apache.hadoop</groupId>
@@ -96,7 +109,7 @@
         <dependency>
             <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-hdfs</artifactId>
-            <version>${fluss.hadoop.version}</version>
+            <version>${fs.hadoopshaded.version}</version>
             <scope>test</scope>
             <type>test-jar</type>
             <exclusions>
