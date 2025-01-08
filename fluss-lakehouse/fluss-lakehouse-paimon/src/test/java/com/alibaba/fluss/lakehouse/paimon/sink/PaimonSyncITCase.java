@@ -18,6 +18,7 @@ package com.alibaba.fluss.lakehouse.paimon.sink;
 
 import com.alibaba.fluss.config.AutoPartitionTimeUnit;
 import com.alibaba.fluss.config.ConfigOptions;
+import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.lakehouse.paimon.testutils.FlinkPaimonTestBase;
 import com.alibaba.fluss.lakehouse.paimon.testutils.PaimonSyncTestBase;
 import com.alibaba.fluss.metadata.Schema;
@@ -28,8 +29,10 @@ import com.alibaba.fluss.row.InternalRow;
 import com.alibaba.fluss.types.DataTypes;
 import com.alibaba.fluss.utils.types.Tuple2;
 
+import com.google.common.collect.ImmutableMap;
 import org.apache.flink.core.execution.JobClient;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.paimon.CoreOptions;
 import org.apache.paimon.catalog.Catalog;
 import org.apache.paimon.catalog.Identifier;
 import org.apache.paimon.reader.RecordReader;
@@ -166,6 +169,48 @@ class PaimonSyncITCase extends PaimonSyncTestBase {
         jobClient.cancel().get();
     }
 
+    @Test
+    void testDatabaseSyncWithBranch() throws Exception {
+        // create a pk table, write some records and wait until snapshot finished
+        String testBranch = "test-branch";
+        TablePath t1 = TablePath.of(DEFAULT_DB, "pkTable");
+        long t1Id = createPkTable(t1);
+        TableBucket t1Bucket = new TableBucket(t1Id, 0);
+        // write records
+        List<InternalRow> rows =
+                Arrays.asList(
+                        compactedRow(DATA1_ROW_TYPE, new Object[] {1, "v1"}),
+                        compactedRow(DATA1_ROW_TYPE, new Object[] {2, "v2"}),
+                        compactedRow(DATA1_ROW_TYPE, new Object[] {3, "v3"}));
+        // write records
+        writeRows(t1, rows, false);
+        waitUntilSnapshot(t1Id, 1, 0);
+
+        // create paimon table and branch.
+        NewTablesAddedPaimonListener newTableAddedPaimonListener =
+                new NewTablesAddedPaimonListener(
+                        Configuration.fromMap(FlinkPaimonTestBase.getPaimonCatalogConf()));
+        newTableAddedPaimonListener.onNewTablesAdded(
+                Collections.singletonList(admin.getTable(t1).get()));
+        Identifier tableIdentifier = Identifier.create(t1.getDatabaseName(), t1.getTableName());
+        FileStoreTable table = (FileStoreTable) paimonCatalog.getTable(tableIdentifier);
+        table.createBranch(testBranch);
+
+        // then start database sync job
+        PaimonDataBaseSyncSinkBuilder builder =
+                getDatabaseSyncSinkBuilder(execEnv)
+                        .withTableConfig(ImmutableMap.of(CoreOptions.BRANCH.key(), testBranch));
+        builder.build();
+        JobClient jobClient = execEnv.executeAsync();
+
+        // check the status of replica after synced
+        assertReplicaStatus(t1Bucket, -1);
+        // check data in paimon
+        checkDataInPaimonPrimayKeyTable(t1, rows, testBranch);
+
+        jobClient.cancel().get();
+    }
+
     private Tuple2<Long, TableDescriptor> createPartitionedTable(TablePath partitionedTablePath)
             throws Exception {
         TableDescriptor partitionedTableDescriptor =
@@ -192,7 +237,7 @@ class PaimonSyncITCase extends PaimonSyncTestBase {
             TablePath tablePath, List<InternalRow> expectedRows, long startingOffset)
             throws Exception {
         Iterator<org.apache.paimon.data.InternalRow> paimonRowIterator =
-                getPaimonRowCloseableIterator(tablePath);
+                getPaimonRowCloseableIterator(tablePath, null);
         Iterator<InternalRow> flussRowIterator = expectedRows.iterator();
         while (paimonRowIterator.hasNext()) {
             org.apache.paimon.data.InternalRow row = paimonRowIterator.next();
@@ -206,8 +251,13 @@ class PaimonSyncITCase extends PaimonSyncTestBase {
 
     private void checkDataInPaimonPrimayKeyTable(
             TablePath tablePath, List<InternalRow> expectedRows) throws Exception {
+        checkDataInPaimonPrimayKeyTable(tablePath, expectedRows, null);
+    }
+
+    private void checkDataInPaimonPrimayKeyTable(
+            TablePath tablePath, List<InternalRow> expectedRows, String branch) throws Exception {
         Iterator<org.apache.paimon.data.InternalRow> paimonRowIterator =
-                getPaimonRowCloseableIterator(tablePath);
+                getPaimonRowCloseableIterator(tablePath, branch);
         for (InternalRow expectedRow : expectedRows) {
             org.apache.paimon.data.InternalRow row = paimonRowIterator.next();
             assertThat(row.getInt(0)).isEqualTo(expectedRow.getInt(0));
@@ -222,7 +272,7 @@ class PaimonSyncITCase extends PaimonSyncTestBase {
             long startingOffset)
             throws Exception {
         Iterator<org.apache.paimon.data.InternalRow> paimonRowIterator =
-                getPaimonRowCloseableIterator(tablePath, partitionSpec);
+                getPaimonRowCloseableIterator(tablePath, partitionSpec, null);
         Iterator<InternalRow> flussRowIterator = expectedRows.iterator();
         while (paimonRowIterator.hasNext()) {
             org.apache.paimon.data.InternalRow row = paimonRowIterator.next();
@@ -236,11 +286,14 @@ class PaimonSyncITCase extends PaimonSyncTestBase {
     }
 
     private CloseableIterator<org.apache.paimon.data.InternalRow> getPaimonRowCloseableIterator(
-            TablePath tablePath) throws Exception {
+            TablePath tablePath, String branch) throws Exception {
         Identifier tableIdentifier =
                 Identifier.create(tablePath.getDatabaseName(), tablePath.getTableName());
 
         FileStoreTable table = (FileStoreTable) paimonCatalog.getTable(tableIdentifier);
+        if (branch != null) {
+            table = table.switchToBranch(branch);
+        }
 
         RecordReader<org.apache.paimon.data.InternalRow> reader =
                 table.newRead().createReader(table.newReadBuilder().newScan().plan());
@@ -248,12 +301,15 @@ class PaimonSyncITCase extends PaimonSyncTestBase {
     }
 
     private CloseableIterator<org.apache.paimon.data.InternalRow> getPaimonRowCloseableIterator(
-            TablePath tablePath, Map<String, String> partitionSpec) throws Exception {
+            TablePath tablePath, Map<String, String> partitionSpec, String branch)
+            throws Exception {
         Identifier tableIdentifier =
                 Identifier.create(tablePath.getDatabaseName(), tablePath.getTableName());
 
         FileStoreTable table = (FileStoreTable) paimonCatalog.getTable(tableIdentifier);
-
+        if (branch != null) {
+            table = table.switchToBranch(branch);
+        }
         RecordReader<org.apache.paimon.data.InternalRow> reader =
                 table.newRead()
                         .createReader(
