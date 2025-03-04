@@ -5,13 +5,15 @@ sidebar_position: 3
 
 # Versioned Merge Engine
 
-By specifying `'table.merge-engine' = 'versioned'`, users can update data based on the configured version column. Updates will be carried out when the latest value of the specified field is greater than the stored value. If it is less than or empty, no update will be made.
+By setting `'table.merge-engine' = 'versioned'`, users can update data based on the configured version column. Updates will be carried out when the latest value of the specified field is greater than or equal to the stored value. If it is less than or null, no update will be made.
+This feature is particularly valuable for replacing [Deduplication](https://nightlies.apache.org/flink/flink-docs-release-1.20/docs/dev/table/sql/queries/deduplication/) transformations in streaming computations, reducing complexity and improving overall efficiency.
 
 :::note
 When using `versioned` merge engine, there are the following limits:
-- `UPDATE` and `DELETE` statements are not supported
-- Partial update is not supported
-  :::
+- `UPDATE` and `DELETE` statements are not supported.
+- Partial update is not supported.
+- `UPDATE_BEFORE` and `DELETE` changelog events are ignored automatically.
+:::
 
 ## Versioned Merge Column
 
@@ -23,24 +25,24 @@ The versioned merge column supports the following data types.
 - TIMESTAMP(p)
 - TIMESTAMP_LTZ
 - TIMESTAMP_LTZ(p)
-  :::
+:::
 
 example:
-```sql title="versioned"
+```sql title="Flink SQL"
 
-create table merge_engine_with_version (
-    a int not null primary key not enforced,
-    b string, 
-    ts bigint
- ) with(
+CREATE TABLE VERSIONED (
+    a INT NOT NULL PRIMARY KEY NOT ENFORCED,
+    b STRING, 
+    ts BIGINT
+ ) WITH (
     'table.merge-engine' = 'versioned',
     'table.merge-engine.versioned.ver-column' = 'ts'
 );
-insert into merge_engine_with_version ( a,b,ts ) VALUES (1, 'v1', 1000);
+INSERT INTO VERSIONED (a, b, ts) VALUES (1, 'v1', 1000);
 
 -- insert data with ts < 1000, no update will be made
-insert into merge_engine_with_version ( a,b,ts ) VALUES (1, 'v2', 999);
-select * from merge_engine_with_version;
+INSERT INTO VERSIONED (a, b, ts) VALUES (1, 'v2', 999);
+SELECT * FROM VERSIONED;
 -- Output
 -- +---+-----+------+
 -- | a | b   | ts   |
@@ -50,21 +52,23 @@ select * from merge_engine_with_version;
 
 
 -- insert data with ts > 1000, update will be made
-insert into merge_engine_with_version ( a,b,ts ) VALUES (1, 'v2', 2000);
-select * from merge_engine_with_version;
+INSERT INTO VERSIONED (a, b, ts) VALUES (1, 'v2', 2000);
+SELECT * FROM VERSIONED;
 -- Output
 -- +---+-----+------+
 -- | a | b   | ts   |
 -- +---+-----+------+
 -- | 1 | v2  | 2000 |
+-- +---+-----+------+
 
 -- insert data with ts = null, no update will be made
-nsert into merge_engine_with_version ( a,b,ts ) VALUES (1, 'v2', null);
-select * from merge_engine_with_version;
+INSERT INTO VERSIONED (a, b, ts) VALUES (1, 'v2', null);
+SELECT * FROM VERSIONED;
 -- Output
 -- +---+-----+------+
 -- | a | b   | ts   |
 -- +---+-----+------+
 -- | 1 | v2  | 2000 |
+-- +---+-----+------+
 
 ```
