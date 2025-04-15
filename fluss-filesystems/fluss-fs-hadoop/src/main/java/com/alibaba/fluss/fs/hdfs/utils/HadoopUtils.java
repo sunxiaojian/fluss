@@ -18,6 +18,7 @@ package com.alibaba.fluss.fs.hdfs.utils;
 
 import com.alibaba.fluss.config.ConfigBuilder;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hdfs.HdfsConfiguration;
 import org.apache.hadoop.io.Text;
@@ -28,7 +29,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.function.Consumer;
 
 import static com.alibaba.fluss.utils.Preconditions.checkState;
 
@@ -46,17 +49,13 @@ public class HadoopUtils {
 
     static final Text HDFS_DELEGATION_TOKEN_KIND = new Text("HDFS_DELEGATION_TOKEN");
 
-    /** The prefixes that Fluss adds to the Hadoop config. */
-    private static final String[] FLUSS_CONFIG_PREFIXES = {"fluss.hadoop."};
-
     public static Configuration getHadoopConfiguration(
-            com.alibaba.fluss.config.Configuration flussConfiguration) {
+            String[] prefixes, com.alibaba.fluss.config.Configuration flussConfiguration) {
 
         // Instantiate an HdfsConfiguration to load the hdfs-site.xml and hdfs-default.xml
         // from the classpath
 
         Configuration result = new HdfsConfiguration();
-        boolean foundHadoopConfiguration = false;
 
         // We need to load both core-site.xml and hdfs-site.xml to determine the default fs path and
         // the hdfs configuration.
@@ -65,6 +64,27 @@ public class HadoopUtils {
         // file with higher priority should be added later.
 
         // Approach 1: HADOOP_HOME environment variables
+        boolean foundHadoopConfiguration = loadHadoopConfigurationFromEnv(result);
+
+        // Approach 2: Fluss configuration
+        // add all configuration key with prefix 'fluss.hadoop.' in fluss conf to hadoop conf
+        Configuration extractConfiguration =
+                createHadoopConfiguration(prefixes, flussConfiguration);
+        if (extractConfiguration.iterator().hasNext()) {
+            result.addResource(extractConfiguration);
+            foundHadoopConfiguration = true;
+        }
+
+        if (!foundHadoopConfiguration) {
+            LOG.warn(
+                    "Could not find Hadoop configuration via any of the supported methods "
+                            + "(Fluss configuration, environment variables).");
+        }
+        return result;
+    }
+
+    private static boolean loadHadoopConfigurationFromEnv(Configuration result) {
+        boolean foundHadoopConfiguration = false;
         String[] possibleHadoopConfPaths = new String[2];
 
         final String hadoopHome = System.getenv("HADOOP_HOME");
@@ -80,41 +100,67 @@ public class HadoopUtils {
             }
         }
 
-        // Approach 2: HADOOP_CONF_DIR environment variable
         String hadoopConfDir = System.getenv("HADOOP_CONF_DIR");
         if (hadoopConfDir != null) {
             LOG.debug("Searching Hadoop configuration files in HADOOP_CONF_DIR: {}", hadoopConfDir);
             foundHadoopConfiguration =
                     addHadoopConfIfFound(result, hadoopConfDir) || foundHadoopConfiguration;
         }
+        return foundHadoopConfiguration;
+    }
 
-        // Approach 3: Fluss configuration
-        // add all configuration key with prefix 'fluss.hadoop.' in fluss conf to hadoop conf
-        for (String key : flussConfiguration.keySet()) {
-            for (String prefix : FLUSS_CONFIG_PREFIXES) {
-                if (key.startsWith(prefix)) {
-                    String newKey = key.substring(prefix.length());
-                    String value =
-                            flussConfiguration.getString(
-                                    ConfigBuilder.key(key).stringType().noDefaultValue(), null);
-                    result.set(newKey, value);
-                    LOG.debug(
-                            "Adding Fluss config entry for {} as {}={} to Hadoop config",
-                            key,
-                            newKey,
-                            value);
-                    foundHadoopConfiguration = true;
-                }
-            }
+    public static Configuration createHadoopConfiguration(
+            String[] prefixes, com.alibaba.fluss.config.Configuration flussConfiguration) {
+        return createHadoopConfiguration(prefixes, null, flussConfiguration);
+    }
+
+    public static Configuration createHadoopConfiguration(
+            String[] prefixes,
+            String replacePrefix,
+            com.alibaba.fluss.config.Configuration flussConfiguration) {
+        Configuration configuration = new Configuration();
+        boolean replacePrefixNotEmpty = StringUtils.isNotEmpty(replacePrefix);
+        Arrays.stream(prefixes)
+                .distinct()
+                .sorted((a, b) -> Integer.compare(b.length(), a.length()))
+                .forEach(
+                        prefix ->
+                                flussConfiguration.keySet().stream()
+                                        .filter(key -> key.startsWith(prefix))
+                                        .forEach(
+                                                key -> {
+                                                    String newKey =
+                                                            replacePrefixNotEmpty
+                                                                    ? replacePrefix
+                                                                            + key.substring(
+                                                                                    prefix.length())
+                                                                    : key.substring(
+                                                                            prefix.length());
+                                                    configuration.set(
+                                                            newKey,
+                                                            flussConfiguration.getString(
+                                                                    ConfigBuilder.key(key)
+                                                                            .stringType()
+                                                                            .noDefaultValue(),
+                                                                    null));
+                                                }));
+        return configuration;
+    }
+
+    public static void setCredentialProvider(
+            org.apache.hadoop.conf.Configuration hadoopConfig,
+            String accessKeyIdKey,
+            String credentialsProviderKey,
+            Consumer<Configuration> credentialUpdater) {
+        if (hadoopConfig.get(accessKeyIdKey) == null) {
+            LOG.info(
+                    "{} is not set, using credential provider {}.",
+                    accessKeyIdKey,
+                    hadoopConfig.get(credentialsProviderKey));
+            credentialUpdater.accept(hadoopConfig);
+        } else {
+            LOG.info("{} is set, using provided credentials.", accessKeyIdKey);
         }
-
-        if (!foundHadoopConfiguration) {
-            LOG.warn(
-                    "Could not find Hadoop configuration via any of the supported methods "
-                            + "(Fluss configuration, environment variables).");
-        }
-
-        return result;
     }
 
     public static boolean isKerberosSecurityEnabled(UserGroupInformation ugi) {
@@ -170,9 +216,9 @@ public class HadoopUtils {
                 configuration.addResource(
                         new org.apache.hadoop.fs.Path(possibleHadoopConfPath + "/core-site.xml"));
                 LOG.debug(
-                        "Adding "
-                                + possibleHadoopConfPath
-                                + "/core-site.xml to hadoop configuration");
+                        String.format(
+                                "Adding %s/core-site.xml to hadoop configuration",
+                                possibleHadoopConfPath));
                 foundHadoopConfiguration = true;
             }
             if (new File(possibleHadoopConfPath + "/hdfs-site.xml").exists()) {

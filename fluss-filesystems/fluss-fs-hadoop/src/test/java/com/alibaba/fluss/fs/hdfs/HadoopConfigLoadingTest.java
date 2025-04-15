@@ -30,6 +30,7 @@ import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.Map;
 
+import static com.alibaba.fluss.fs.hdfs.HadoopFsPlugin.FLUSS_CONFIG_PREFIXES;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -37,14 +38,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * configuration and the environment variables.
  */
 class HadoopConfigLoadingTest {
-
     private static final String IN_CP_CONFIG_KEY = "cp_conf_key";
     private static final String IN_CP_CONFIG_VALUE = "oompf!";
 
     @Test
     void loadFromClasspathByDefault() {
         org.apache.hadoop.conf.Configuration hadoopConf =
-                HadoopUtils.getHadoopConfiguration(new Configuration());
+                HadoopUtils.getHadoopConfiguration(FLUSS_CONFIG_PREFIXES, new Configuration());
 
         assertThat(hadoopConf.get(IN_CP_CONFIG_KEY, null)).isEqualTo(IN_CP_CONFIG_VALUE);
     }
@@ -93,7 +93,8 @@ class HadoopConfigLoadingTest {
         newEnv.put("HADOOP_HOME", hadoopHome.getAbsolutePath());
         try {
             CommonTestUtils.setEnv(newEnv);
-            hadoopConf = HadoopUtils.getHadoopConfiguration(new Configuration());
+            hadoopConf =
+                    HadoopUtils.getHadoopConfiguration(FLUSS_CONFIG_PREFIXES, new Configuration());
         } finally {
             CommonTestUtils.setEnv(originalEnv);
         }
@@ -168,7 +169,7 @@ class HadoopConfigLoadingTest {
         newEnv.put("HADOOP_HOME", hadoopHome.getAbsolutePath());
         try {
             CommonTestUtils.setEnv(newEnv);
-            hadoopConf = HadoopUtils.getHadoopConfiguration(cfg);
+            hadoopConf = HadoopUtils.getHadoopConfiguration(FLUSS_CONFIG_PREFIXES, cfg);
         } finally {
             CommonTestUtils.setEnv(originalEnv);
         }
@@ -210,7 +211,8 @@ class HadoopConfigLoadingTest {
         cfg.setString(prefix + k4, v4);
         cfg.setString(k5, v5);
 
-        org.apache.hadoop.conf.Configuration hadoopConf = HadoopUtils.getHadoopConfiguration(cfg);
+        org.apache.hadoop.conf.Configuration hadoopConf =
+                HadoopUtils.getHadoopConfiguration(FLUSS_CONFIG_PREFIXES, cfg);
 
         // contains extra entries
         assertThat(hadoopConf.get(k1, null)).isEqualTo(v1);

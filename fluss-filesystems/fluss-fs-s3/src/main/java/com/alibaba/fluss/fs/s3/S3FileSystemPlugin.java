@@ -16,27 +16,21 @@
 
 package com.alibaba.fluss.fs.s3;
 
-import com.alibaba.fluss.config.ConfigBuilder;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.fs.FileSystem;
 import com.alibaba.fluss.fs.FileSystemPlugin;
-import com.alibaba.fluss.fs.s3.token.S3ADelegationTokenReceiver;
+import com.alibaba.fluss.fs.hdfs.utils.HadoopUtils;
 import com.alibaba.fluss.fs.s3.token.S3DelegationTokenReceiver;
 
 import org.apache.hadoop.fs.s3a.S3AFileSystem;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
-import java.util.Objects;
 
 import static com.alibaba.fluss.fs.s3.token.S3DelegationTokenReceiver.PROVIDER_CONFIG_NAME;
 
 /** Simple factory for the s3 file system. */
 public class S3FileSystemPlugin implements FileSystemPlugin {
-
-    private static final Logger LOG = LoggerFactory.getLogger(S3FileSystemPlugin.class);
 
     private static final String[] FLUSS_CONFIG_PREFIXES = {"s3.", "s3a.", "fs.s3a."};
 
@@ -58,38 +52,17 @@ public class S3FileSystemPlugin implements FileSystemPlugin {
     @Override
     public FileSystem create(URI fsUri, Configuration flussConfig) throws IOException {
         org.apache.hadoop.conf.Configuration hadoopConfig =
-                mirrorCertainHadoopConfig(getHadoopConfiguration(flussConfig));
+                mirrorCertainHadoopConfig(
+                        HadoopUtils.createHadoopConfiguration(
+                                FLUSS_CONFIG_PREFIXES, HADOOP_CONFIG_PREFIX, flussConfig));
 
         // set credential provider
-        setCredentialProvider(hadoopConfig);
+        HadoopUtils.setCredentialProvider(
+                hadoopConfig, ACCESS_KEY_ID, PROVIDER_CONFIG_NAME, this::updateHadoopConfig);
 
         // create the Hadoop FileSystem
-        org.apache.hadoop.fs.FileSystem fs = new S3AFileSystem();
-        fs.initialize(getInitURI(fsUri, hadoopConfig), hadoopConfig);
+        org.apache.hadoop.fs.FileSystem fs = S3AFileSystem.get(fsUri, hadoopConfig);
         return new S3FileSystem(getScheme(), fs, hadoopConfig);
-    }
-
-    org.apache.hadoop.conf.Configuration getHadoopConfiguration(Configuration flussConfig) {
-        org.apache.hadoop.conf.Configuration conf = new org.apache.hadoop.conf.Configuration();
-        if (flussConfig == null) {
-            return conf;
-        }
-
-        for (String key : flussConfig.keySet()) {
-            for (String prefix : FLUSS_CONFIG_PREFIXES) {
-                if (key.startsWith(prefix)) {
-                    String newKey = HADOOP_CONFIG_PREFIX + key.substring(prefix.length());
-                    String newValue =
-                            flussConfig.getString(
-                                    ConfigBuilder.key(key).stringType().noDefaultValue(), null);
-                    conf.set(newKey, newValue);
-
-                    LOG.debug(
-                            "Adding Fluss config entry for {} as {} to Hadoop config", key, newKey);
-                }
-            }
-        }
-        return conf;
     }
 
     // mirror certain keys to make use more uniform across implementations
@@ -105,36 +78,7 @@ public class S3FileSystemPlugin implements FileSystemPlugin {
         return hadoopConfig;
     }
 
-    private URI getInitURI(URI fsUri, org.apache.hadoop.conf.Configuration hadoopConfig) {
-        final String scheme = fsUri.getScheme();
-        final String authority = fsUri.getAuthority();
-
-        if (scheme == null && authority == null) {
-            fsUri = org.apache.hadoop.fs.FileSystem.getDefaultUri(hadoopConfig);
-        } else if (scheme != null && authority == null) {
-            URI defaultUri = org.apache.hadoop.fs.FileSystem.getDefaultUri(hadoopConfig);
-            if (scheme.equals(defaultUri.getScheme()) && defaultUri.getAuthority() != null) {
-                fsUri = defaultUri;
-            }
-        }
-        return fsUri;
-    }
-
-    private void setCredentialProvider(org.apache.hadoop.conf.Configuration hadoopConfig) {
-        if (hadoopConfig.get(ACCESS_KEY_ID) == null) {
-            if (Objects.equals(getScheme(), "s3")) {
-                S3DelegationTokenReceiver.updateHadoopConfig(hadoopConfig);
-            } else if (Objects.equals(getScheme(), "s3a")) {
-                S3ADelegationTokenReceiver.updateHadoopConfig(hadoopConfig);
-            } else {
-                throw new IllegalArgumentException("Unsupported scheme: " + getScheme());
-            }
-            LOG.info(
-                    "{} is not set, using credential provider {}.",
-                    ACCESS_KEY_ID,
-                    hadoopConfig.get(PROVIDER_CONFIG_NAME));
-        } else {
-            LOG.info("{} is set, using provided access key id and secret.", ACCESS_KEY_ID);
-        }
+    protected void updateHadoopConfig(org.apache.hadoop.conf.Configuration hadoopConfig) {
+        S3DelegationTokenReceiver.updateHadoopConfig(hadoopConfig);
     }
 }

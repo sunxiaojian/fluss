@@ -16,11 +16,20 @@
 
 package com.alibaba.fluss.fs.s3;
 
+import com.alibaba.fluss.fs.s3.token.S3ADelegationTokenReceiver;
+
+import org.apache.hadoop.conf.Configuration;
+
 /** Simple factory for the S3 file system, registered for the <tt>s3a://</tt> scheme. */
 public class S3AFileSystemPlugin extends S3FileSystemPlugin {
 
     @Override
     public String getScheme() {
         return "s3a";
+    }
+
+    @Override
+    protected void updateHadoopConfig(Configuration hadoopConfig) {
+        S3ADelegationTokenReceiver.updateHadoopConfig(hadoopConfig);
     }
 }

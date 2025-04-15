@@ -32,6 +32,7 @@ import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 
+import static com.alibaba.fluss.fs.hdfs.HadoopFsPlugin.FLUSS_CONFIG_PREFIXES;
 import static com.alibaba.fluss.fs.hdfs.utils.HadoopUtils.HDFS_DELEGATION_TOKEN_KIND;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -160,7 +161,8 @@ class HadoopUtilsTest {
         try {
             com.alibaba.fluss.config.Configuration configuration =
                     new com.alibaba.fluss.config.Configuration();
-            Configuration hadoopConf = HadoopUtils.getHadoopConfiguration(configuration);
+            Configuration hadoopConf =
+                    HadoopUtils.getHadoopConfiguration(FLUSS_CONFIG_PREFIXES, configuration);
             assertThat(hadoopConf.get("cp_conf_key")).isEqualTo("oompf!");
         } finally {
             CommonTestUtils.setEnv(originalEnv);
@@ -172,7 +174,8 @@ class HadoopUtilsTest {
         try {
             com.alibaba.fluss.config.Configuration configuration =
                     new com.alibaba.fluss.config.Configuration();
-            Configuration hadoopConf = HadoopUtils.getHadoopConfiguration(configuration);
+            Configuration hadoopConf =
+                    HadoopUtils.getHadoopConfiguration(FLUSS_CONFIG_PREFIXES, configuration);
             assertThat(hadoopConf.get("cp_conf_key")).isEqualTo("oompf!");
         } finally {
             CommonTestUtils.setEnv(originalEnv);
@@ -184,7 +187,8 @@ class HadoopUtilsTest {
         com.alibaba.fluss.config.Configuration configuration =
                 new com.alibaba.fluss.config.Configuration();
         configuration.setString("fluss.hadoop.k1", "v1");
-        Configuration hadoopConf = HadoopUtils.getHadoopConfiguration(configuration);
+        Configuration hadoopConf =
+                HadoopUtils.getHadoopConfiguration(FLUSS_CONFIG_PREFIXES, configuration);
         assertThat(hadoopConf.get("k1")).isEqualTo("v1");
     }
 

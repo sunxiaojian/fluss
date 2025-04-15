@@ -16,20 +16,17 @@
 
 package com.alibaba.fluss.fs.oss;
 
-import com.alibaba.fluss.annotation.VisibleForTesting;
-import com.alibaba.fluss.config.ConfigBuilder;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.exception.FlussRuntimeException;
 import com.alibaba.fluss.fs.FileSystem;
 import com.alibaba.fluss.fs.FileSystemPlugin;
+import com.alibaba.fluss.fs.hdfs.utils.HadoopUtils;
 import com.alibaba.fluss.fs.oss.token.OSSSecurityTokenReceiver;
 
 import com.aliyun.oss.OSSClient;
 import com.aliyun.oss.common.comm.SignVersion;
 import org.apache.hadoop.fs.aliyun.oss.AliyunOSSFileSystem;
 import org.apache.hadoop.fs.aliyun.oss.AliyunOSSFileSystemStore;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -44,8 +41,6 @@ import static org.apache.hadoop.fs.aliyun.oss.Constants.CREDENTIALS_PROVIDER_KEY
 
 /** Simple factory for the OSS file system. */
 public class OSSFileSystemPlugin implements FileSystemPlugin {
-
-    private static final Logger LOG = LoggerFactory.getLogger(OSSFileSystemPlugin.class);
 
     public static final String SCHEME = "oss";
 
@@ -64,30 +59,15 @@ public class OSSFileSystemPlugin implements FileSystemPlugin {
 
     @Override
     public FileSystem create(URI fsUri, Configuration flussConfig) throws IOException {
-        org.apache.hadoop.conf.Configuration hadoopConfig = getHadoopConfiguration(flussConfig);
+        org.apache.hadoop.conf.Configuration hadoopConfig =
+                HadoopUtils.createHadoopConfiguration(FLUSS_CONFIG_PREFIXES, flussConfig);
 
         // set credential provider
-        if (hadoopConfig.get(ACCESS_KEY_ID) == null) {
-            LOG.info(
-                    "{} is not set, using credential provider {}.",
-                    ACCESS_KEY_ID,
-                    hadoopConfig.get(CREDENTIALS_PROVIDER_KEY));
-            setCredentialProvider(flussConfig, hadoopConfig);
-        } else {
-            LOG.info("{} is set, using provided access key id and secret.", ACCESS_KEY_ID);
-        }
-
-        final String scheme = fsUri.getScheme();
-        final String authority = fsUri.getAuthority();
-
-        if (scheme == null && authority == null) {
-            fsUri = org.apache.hadoop.fs.FileSystem.getDefaultUri(hadoopConfig);
-        } else if (scheme != null && authority == null) {
-            URI defaultUri = org.apache.hadoop.fs.FileSystem.getDefaultUri(hadoopConfig);
-            if (scheme.equals(defaultUri.getScheme()) && defaultUri.getAuthority() != null) {
-                fsUri = defaultUri;
-            }
-        }
+        HadoopUtils.setCredentialProvider(
+                hadoopConfig,
+                ACCESS_KEY_ID,
+                CREDENTIALS_PROVIDER_KEY,
+                OSSSecurityTokenReceiver::updateHadoopConfig);
 
         org.apache.hadoop.fs.FileSystem fileSystem = initFileSystem(fsUri, hadoopConfig);
         return new OSSFileSystem(fileSystem, getScheme(), hadoopConfig);
@@ -95,49 +75,18 @@ public class OSSFileSystemPlugin implements FileSystemPlugin {
 
     protected org.apache.hadoop.fs.FileSystem initFileSystem(
             URI fsUri, org.apache.hadoop.conf.Configuration hadoopConfig) throws IOException {
-        AliyunOSSFileSystem fileSystem = new AliyunOSSFileSystem();
-        fileSystem.initialize(fsUri, hadoopConfig);
+        org.apache.hadoop.fs.FileSystem fileSystem = AliyunOSSFileSystem.get(fsUri, hadoopConfig);
         setSignatureVersion4(fileSystem, hadoopConfig);
         return fileSystem;
     }
 
-    @VisibleForTesting
-    org.apache.hadoop.conf.Configuration getHadoopConfiguration(Configuration flussConfig) {
-        org.apache.hadoop.conf.Configuration conf = new org.apache.hadoop.conf.Configuration();
-        if (flussConfig == null) {
-            return conf;
-        }
-
-        // read all configuration with prefix 'FLUSS_CONFIG_PREFIXES'
-        for (String key : flussConfig.keySet()) {
-            for (String prefix : FLUSS_CONFIG_PREFIXES) {
-                if (key.startsWith(prefix)) {
-                    String value =
-                            flussConfig.getString(
-                                    ConfigBuilder.key(key).stringType().noDefaultValue(), null);
-                    conf.set(key, value);
-
-                    LOG.debug(
-                            "Adding Fluss config entry for {} as {} to Hadoop config",
-                            key,
-                            conf.get(key));
-                }
-            }
-        }
-        return conf;
-    }
-
-    protected void setCredentialProvider(
-            Configuration flussConfig, org.apache.hadoop.conf.Configuration hadoopConfig) {
-        OSSSecurityTokenReceiver.updateHadoopConfig(hadoopConfig);
-    }
-
     private void setSignatureVersion4(
-            AliyunOSSFileSystem aliyunOSSFileSystem,
+            org.apache.hadoop.fs.FileSystem fileSystem,
             org.apache.hadoop.conf.Configuration hadoopConfig) {
         // hack logic, we use reflection to set signature version 4
         // todo: remove the hack logic once hadoop-aliyun lib support it
-        AliyunOSSFileSystemStore aliyunOSSFileSystemStore = aliyunOSSFileSystem.getStore();
+        AliyunOSSFileSystemStore aliyunOSSFileSystemStore =
+                ((AliyunOSSFileSystem) fileSystem).getStore();
         try {
             // get oss client by reflection
             Field ossClientField =

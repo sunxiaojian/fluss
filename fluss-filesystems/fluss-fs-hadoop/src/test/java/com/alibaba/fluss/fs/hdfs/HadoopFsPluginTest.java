@@ -50,6 +50,6 @@ class HadoopFsPluginTest {
 
         assertThatThrownBy(() -> plugin.create(uri, new Configuration()))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("authority");
+                .hasMessageContaining("Incomplete HDFS URI, no host");
     }
 }
