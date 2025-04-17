@@ -26,6 +26,6 @@ However, users can specify a different merge engine to customize the merging beh
 
 The following merge engines are supported:
 
-1. [Default Merge Engine (Latest Row)](table-design/table-types/pk-table/merge-engines/default.md)
+1. [Default Merge Engine (LastRow)](table-design/table-types/pk-table/merge-engines/default.md)
 2. [FirstRow Merge Engine](table-design/table-types/pk-table/merge-engines/first-row.md)
 3. [Versioned Merge Engine](table-design/table-types/pk-table/merge-engines/versioned.md)
