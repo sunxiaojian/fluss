@@ -19,13 +19,14 @@ sidebar_position: 2
  limitations under the License.
 -->
 
-# Default Merge Engine
+# Default Merge Engine (LastRow)
 
 ## Overview
 
-The **Default Merge Engine** in Fluss retains the latest record for a given primary key. It supports the following operations: `INSERT`, `UPDATE`, `DELETE`.
-Fluss also supports partial column updates, allowing you to write only a subset of columns to incrementally update the data and ultimately achieve complete data. Note that the columns being written must include the primary key column.
-The Default Merge Engine is the default behavior in Fluss. It is enabled by default and does not require any additional configuration.
+The **Default Merge Engine** behaves as a LastRow merge engine that retains the latest record for a given primary key. It supports all the operations: `INSERT`, `UPDATE`, `DELETE`.
+Additionally, the default merge engine supports [Partial Update](table-design/table-types/pk-table/index.md#partial-update), which preserves the latest values for the specified update columns.
+If the `'table.merge-engine'` property is not explicitly defined in the table properties when creating a Primary Key Table, the default merge engine will be applied automatically.
+
 
 ## Example
 
