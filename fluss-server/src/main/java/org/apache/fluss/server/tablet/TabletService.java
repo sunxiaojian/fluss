@@ -125,6 +125,7 @@ public final class TabletService extends RpcServiceBase implements TabletServerG
     private final ReplicaManager replicaManager;
     private final TabletServerMetadataCache metadataCache;
     private final TabletServerMetadataProvider metadataFunctionProvider;
+    private final org.apache.fluss.rpc.gateway.CoordinatorGateway coordinatorGateway;
 
     public TabletService(
             int serverId,
@@ -134,7 +135,8 @@ public final class TabletService extends RpcServiceBase implements TabletServerG
             TabletServerMetadataCache metadataCache,
             MetadataManager metadataManager,
             @Nullable Authorizer authorizer,
-            DynamicConfigManager dynamicConfigManager) {
+            DynamicConfigManager dynamicConfigManager,
+            org.apache.fluss.rpc.gateway.CoordinatorGateway coordinatorGateway) {
         super(
                 remoteFileSystem,
                 ServerType.TABLET_SERVER,
@@ -147,6 +149,25 @@ public final class TabletService extends RpcServiceBase implements TabletServerG
         this.metadataCache = metadataCache;
         this.metadataFunctionProvider =
                 new TabletServerMetadataProvider(zkClient, metadataManager, metadataCache);
+        this.coordinatorGateway = coordinatorGateway;
+    }
+
+    /**
+     * Create table by delegating to Coordinator. This method is used by Kafka protocol to support
+     * CREATE_TOPICS.
+     */
+    public CompletableFuture<org.apache.fluss.rpc.messages.CreateTableResponse>
+            createTableViaCoordinator(org.apache.fluss.rpc.messages.CreateTableRequest request) {
+        return coordinatorGateway.createTable(request);
+    }
+
+    /**
+     * Drop table by delegating to Coordinator. This method is used by Kafka protocol to support
+     * DELETE_TOPICS.
+     */
+    public CompletableFuture<org.apache.fluss.rpc.messages.DropTableResponse>
+            dropTableViaCoordinator(org.apache.fluss.rpc.messages.DropTableRequest request) {
+        return coordinatorGateway.dropTable(request);
     }
 
     @Override

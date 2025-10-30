@@ -63,10 +63,19 @@
             <version>${project.version}</version>
         </dependency>
 
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>fluss-client</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+
         <!-- test dependency -->
         <dependency>
             <groupId>org.apache.fluss</groupId>
             <artifactId>fluss-test-utils</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
         </dependency>
 
         <dependency>
@@ -89,6 +98,13 @@
             <artifactId>fluss-rpc</artifactId>
             <version>${project.version}</version>
             <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.curator</groupId>
+            <artifactId>curator-test</artifactId>
+            <version>${curator.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

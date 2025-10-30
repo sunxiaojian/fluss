@@ -227,7 +227,14 @@ public final class NettyServer implements RpcServer {
         List<String> listeners =
                 endpoints.stream().map(Endpoint::getListenerName).collect(Collectors.toList());
         List<NetworkProtocolPlugin> protocolPlugins = new ArrayList<>();
-        if (conf.get(ConfigOptions.KAFKA_ENABLED)) {
+        // Kafka protocol is only supported on TabletServer
+        // Reason: Kafka protocol requires TabletServerGateway to handle requests like
+        // PRODUCE, FETCH, and CREATE_TOPICS/DELETE_TOPICS (which delegate to Coordinator).
+        // CoordinatorServer uses CoordinatorService which doesn't implement TabletServerGateway,
+        // so loading Kafka protocol on CoordinatorServer would cause IllegalArgumentException
+        // when creating RequestHandler in RequestProcessorPool.initializeRequestHandlers().
+        // This check prevents FlussClusterExtension from hanging during CoordinatorServer startup.
+        if (conf.get(ConfigOptions.KAFKA_ENABLED) && serverType == ServerType.TABLET_SERVER) {
             NetworkProtocolPlugin kafkaPlugin =
                     loadProtocolPlugin(NetworkProtocolPlugin.KAFKA_PROTOCOL_NAME);
             kafkaPlugin.setup(conf);
